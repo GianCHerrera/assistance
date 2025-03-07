@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 from typing_extensions import override
 from openai import AssistantEventHandler
 import json
+
+from utils import get_product_info, get_product_stock, get_all_products
+
 load_dotenv()
 
 class EventHandler(AssistantEventHandler):    
@@ -56,32 +59,20 @@ class EventHandler(AssistantEventHandler):
                 for output in delta.code_interpreter.outputs:
                     if output.type == "logs":
                         print(f"\n{output.logs}", flush=True)
-             
+
     def handle_requires_action(self, data, run_id):
         tool_outputs = []
-        
-        for tool in data.required_action.submit_tool_outputs.tool_calls:           
-            arguments = json.loads(tool.function.arguments)  # Convertir a diccionario
+        for tool in data.required_action.submit_tool_outputs.tool_calls:
+            arguments = json.loads(tool.function.arguments)
             if tool.function.name == "get_product_info":
-                product_name = arguments["Name"].lower()
-                product_info = next((item for item in catalog if item["Name"].lower() == product_name), None)
-                if product_info:
-                    tool_outputs.append({"tool_call_id": tool.id, "output": f"The product is {product_info['Name']} with description: {product_info['Description']} and price: {product_info['Price']}."})
-                else:
-                    tool_outputs.append({"tool_call_id": tool.id, "output": "Product not found."})
+                output = get_product_info(arguments["Name"])
+                tool_outputs.append({"tool_call_id": tool.id, "output": output})
             elif tool.function.name == "get_product_stock":
-                product_name = arguments["Name"].lower()
-                product_stock = next((item for item in catalog if item["Name"].lower() == product_name), None)
-                if product_stock:
-                    tool_outputs.append({"tool_call_id": tool.id, "output": f"The product {product_stock['Name']} is in stock with availability: {product_stock['Stock_availabiility']}."})
-                else:
-                    tool_outputs.append({"tool_call_id": tool.id, "output": "Product not found."})
-        
+                output = get_product_stock(arguments["Name"])
+                tool_outputs.append({"tool_call_id": tool.id, "output": output})
             elif tool.function.name == "get_all_products":
-                products = [product["Name"] for product in catalog]
-                tool_outputs.append({"tool_call_id": tool.id, "output": f"The available products are: {', '.join(products)}."})
-                
-        # Submit all tool_outputs at the same time
+                output = get_all_products()
+                tool_outputs.append({"tool_call_id": tool.id, "output": output})
         self.submit_tool_outputs(tool_outputs, run_id)
  
     def submit_tool_outputs(self, tool_outputs, run_id):
@@ -189,10 +180,15 @@ with client.beta.threads.runs.stream(
 
 
 while True:
-    user_input = input("\nuser > ")
-    if user_input.strip().upper() == "END":
+    user_input = input("\nuser > ").strip()
+    if not user_input:
+        print("Message should not be empty")
+        continue
+
+    if user_input.upper() == "END":
         print("Chat is finished.")
         break
+
     response =client.beta.threads.messages.create(thread.id, role="user", content=user_input)
     with client.beta.threads.runs.stream(
         thread_id= thread.id,
