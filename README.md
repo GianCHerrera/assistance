@@ -62,3 +62,9 @@ Run the application:
 ```sh
 python [app.py] app.py
 ```
+
+## Execute tests
+
+```sh
+pytest test_assistant.py
+```
